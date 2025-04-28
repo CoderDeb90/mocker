@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { config } = require("./config");
-const batchSize = 10;
+const batchSize = 1;
 
 function saveToCSV(filename, data) {
   return new Promise((resolve, reject) => {
