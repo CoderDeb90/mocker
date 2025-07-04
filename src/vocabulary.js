@@ -172,7 +172,7 @@ function includeDynamicAttributes(items) {
     const newColumn = {
       name: key.toLowerCase(),
       display_name: key.replace(/_/g,""),
-      type: "varchar(50)",
+      type: "text",
       nullable: true
     };
     items["__schema__"]["cases"]["columns"].push(newColumn);
