@@ -1,5 +1,5 @@
 const { loadAndSetUserConfigurations, config } = require('./config');
-const { processVocabulary } = require('./vocabulary');
+const { processVocabulary, limitVocabularyActivities } = require('./vocabulary');
 const { generateCases, generateEvents } = require('./data');
 const { saveToCSV, writeFile, deleteFile } = require('./output');
 const { generateSchemaSql, generateSqlInsert } = require('./sql_generator');
@@ -8,7 +8,12 @@ const pluralize = require('pluralize');
 
 async function main() {
   loadAndSetUserConfigurations();
-  const vocabulary = processVocabulary();
+
+  let vocabulary = processVocabulary();
+  // Apply activity limiting without modifying original file
+  if (config.MAX_ACTIVITIES < 200) {
+    vocabulary = limitVocabularyActivities(vocabulary, config.MAX_ACTIVITIES);
+  }
 
   const cases = generateCases(config.NUMBER_OF_CASES);
   const events = generateEvents(cases);

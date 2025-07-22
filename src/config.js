@@ -20,7 +20,8 @@ const config = {
   UNIQUE_VALUES_FOR_DYNAMIC_ATTRS: 10,
   MAX_VARIANTS: -1,
   MAX_SEQUENCES: -1,
-  SHOW_SUMMARY: true
+  SHOW_SUMMARY: true,
+  MAX_ACTIVITIES: 200
 };
 
 function loadAndSetUserConfigurations() {
@@ -75,6 +76,9 @@ function loadAndSetUserConfigurations() {
       config.MAX_VARIANTS = parseFloat(nextArg);
     } else if (arg === "-maxsequences" && i + 1 < args.length) {
       config.MAX_SEQUENCES = parseFloat(nextArg);
+    } else if (arg === "-maxactivities" && i + 1 < args.length) {
+      const value = Math.min(parseFloat(nextArg), 200); // Cap at 200
+      config.MAX_ACTIVITIES = value;
     } else if (arg === "-summary" && i + 1 < args.length) {
       config.SHOW_SUMMARY = (nextArg.toLowerCase() == "true")
     }
@@ -145,6 +149,9 @@ function printHelp() {
   );
   console.log(
     `-maxsequences: Maximum number of unique event sequences. (Default: None)`
+  );
+  console.log(
+    `-maxactivities: Maximum number of unique activities to include in generated data (1-200). (Default: ${config.MAX_ACTIVITIES})`
   );
   console.log(
     `-summary: Display data summary on the console. (Default: ${config.SHOW_SUMMARY})`

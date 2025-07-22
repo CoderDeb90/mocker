@@ -46,6 +46,64 @@ function processVocabulary() {
   return _vocabulary;
 }
 
+//Limiting Activities in Vocabulary
+function limitVocabularyActivities(vocabulary, maxActivities) {
+    if (maxActivities >= 200) return vocabulary; // No limiting needed
+
+    console.log(`Limiting activities from 200 to ${maxActivities}`);
+
+    // Get limited activities from EVENT_TYPE
+    const allActivities = Object.keys(items.EVENT_TYPE || {});
+    const limitedActivities = allActivities.slice(0, maxActivities);
+    const excludedActivities = allActivities.slice(maxActivities);
+
+    // Filter EVENT_TYPE in items object
+    const filteredEventType = {};
+    limitedActivities.forEach(activity => {
+        if (items.EVENT_TYPE[activity]) {
+            filteredEventType[activity] = items.EVENT_TYPE[activity];
+        }
+    });
+    items.EVENT_TYPE = filteredEventType;
+
+    // Remove excluded activities from all transition mappings in items
+    Object.keys(items).forEach(key => {
+        if (typeof items[key] === 'object' && items[key] !== null && key !== '__schema__' && key !== '__initial_events__' && key !== '__final_events__') {
+            excludedActivities.forEach(excluded => {
+                delete items[key][excluded];
+            });
+        }
+    });
+
+    // Re-process the filtered vocabulary to update randomStrings
+    for (const key in items) {
+        if (key === "__schema__" || key === "__final_events__") continue;
+
+        const transitions = items[key];
+        const parsedTransitions = [];
+
+        for (const nextEvent in transitions) {
+            const weight = transitions[nextEvent];
+            parsedTransitions.push({ string: nextEvent, weight: weight });
+        }
+
+        randomizeWithWeights(key, parsedTransitions);
+    }
+
+    // Update vocabulary.data.event_type
+    if (vocabulary.data && vocabulary.data.event_type) {
+        const newEventTypeData = {};
+        let id = 1;
+        limitedActivities.forEach(activity => {
+            newEventTypeData[activity] = id++;
+        });
+        vocabulary.data.event_type = newEventTypeData;
+    }
+
+    console.log(`✓ Limited vocabulary to ${maxActivities} activities in memory`);
+    return vocabulary;
+}
+
 function parseSchema(schema) {
   //Vocabulary data stored in a Lookup table
   if (schema.data) {
@@ -194,4 +252,4 @@ function includeDynamicAttributes(items) {
   })
 }
 
-module.exports = { processVocabulary, getRandomString, getVocabulary };
+module.exports = { processVocabulary, getRandomString, getVocabulary, limitVocabularyActivities };
