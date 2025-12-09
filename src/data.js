@@ -38,24 +38,19 @@ function generateCases(numCases) {
   return cases;
 }
 
-function generateEvents(cases) {
-  const transitions = [];
+async function generateEvents(cases, eventWriter = null) {
+  const transitions = eventWriter ? null : [];
   const numCases = cases.length;
 
-  let caseNumber = 0,
-    eventId = 1;
+  let caseNumber = 0, eventId = 1;
   for (const caseRecord of cases) {
-    const numTransitions = faker.number.int({
-      min: config.MIN_EVENTS,
-      max: config.MAX_EVENTS,
-    });
     caseNumber++;
 
     const vocabulary = getVocabulary();
     const startDate = faker.date.past({ years: config.TIMEFRAME_IN_YEARS });
     let currentDate = moment(startDate);
 
-    const variant = generateEventVariant()
+    const variant = generateEventVariant();
     for (const eventName of variant) {
       const event = {};
       vocabulary.schema.events.columns.forEach((field) => {
@@ -66,9 +61,7 @@ function generateEvents(cases) {
         } else if (field.event_action) {
           event[field.display_name] = field.foreign_key ? valueToForeignKey(eventName, field.name) : eventName;
         } else if (field.event_date) {
-          event[field.display_name] = currentDate.format(
-            "YYYY-MM-DD HH:mm:ss.SSS"
-          );
+          event[field.display_name] = currentDate.format("YYYY-MM-DD HH:mm:ss.SSS");
         } else if (field.foreign_key) {
           event[field.display_name] = valueToForeignKey(getRandomString(field.name), field.name);
         } else {
@@ -76,45 +69,32 @@ function generateEvents(cases) {
         }
       });
 
-      transitions.push(event);
+      if (eventWriter) {
+        await eventWriter.writeEvent(event);
+      } else {
+        transitions.push(event);
+      }
+      
       currentDate.add({
-        days: faker.number.int({
-          min: config.MIN_DAYS_BETWEEN_EVENTS,
-          max: config.MAX_DAYS_BETWEEN_EVENTS,
-        }),
-        hours: faker.number.int({
-          min: config.MIN_HOURS_BETWEEN_EVENTS,
-          max: config.MAX_HOURS_BETWEEN_EVENTS,
-        }),
-        minutes: faker.number.int({
-          min: config.MIN_MINUTES_BETWEEN_EVENTS,
-          max: config.MAX_MINUTES_BETWEEN_EVENTS,
-        }),
+        days: faker.number.int({ min: config.MIN_DAYS_BETWEEN_EVENTS, max: config.MAX_DAYS_BETWEEN_EVENTS }),
+        hours: faker.number.int({ min: config.MIN_HOURS_BETWEEN_EVENTS, max: config.MAX_HOURS_BETWEEN_EVENTS }),
+        minutes: faker.number.int({ min: config.MIN_MINUTES_BETWEEN_EVENTS, max: config.MAX_MINUTES_BETWEEN_EVENTS }),
       });
     }
     if (config.SHOW_PROGRESS && caseNumber % config.PROGRESS_INTERVAL == 0) {
-      showProgress(
-        (caseNumber / numCases) * 100,
-        (text = "Generating events")
-      );
+      showProgress((caseNumber / numCases) * 100, "Generating events");
     }
   }
   if (config.SHOW_PROGRESS) {
-    showProgress(1 * 100, (text = "Generating events"));
+    showProgress(100, "Generating events");
     process.stdout.write("\n");
   }
 
-  const stats = {
-    cases: numCases,
-    events: transitions.length,
-    variants: variantsCount,
-    sequences: uniqueSequences.size
-  };
+  const eventCount = eventWriter ? eventId - 1 : transitions.length;
+  const stats = { cases: numCases, events: eventCount, variants: variantsCount, sequences: uniqueSequences.size };
   if (config.SHOW_SUMMARY) {
     console.log("Jira Tickets Summary: {");
-    Object.entries(stats).forEach(([key, value]) => {
-      console.log(`  ${key}: \x1b[33m${value}\x1b[0m`);
-    });
+    Object.entries(stats).forEach(([key, value]) => console.log(`  ${key}: \x1b[33m${value}\x1b[0m`));
     console.log("}");
   }
   if (config.MAX_VARIANTS > 0 && variantsCount < config.MAX_VARIANTS) {

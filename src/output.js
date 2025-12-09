@@ -94,4 +94,189 @@ function deleteFile(filename) {
   }
 }
 
-module.exports = { saveToCSV, writeFile, deleteFile };
+function streamEventsToCSV(filename, vocabulary, onComplete) {
+  const headers = vocabulary.schema.events.columns
+    .filter(col => !col.name.startsWith("_"))
+    .map(col => col.display_name);
+  
+  const stream = fs.createWriteStream(filename, { highWaterMark: 64 * 1024 });
+  stream.setMaxListeners(0);
+  stream.on('error', (err) => {
+    console.error(`Error writing to CSV file ${filename}: ${err.message}`);
+    throw err;
+  });
+  
+  stream.write(headers.join(",") + "\n");
+  
+  let eventCount = 0;
+  return {
+    writeEvent: (event) => {
+      const rowData = headers.map(h => event[h] || "").join(",");
+      return new Promise((resolve) => {
+        if (!stream.write(rowData + "\n")) {
+          stream.once('drain', resolve);
+        } else {
+          resolve();
+        }
+      }).then(() => eventCount++);
+    },
+    close: () => {
+      stream.end(() => {
+        onComplete(eventCount);
+      });
+    }
+  };
+}
+
+function streamEventsToSQL(filename, vocabulary, onComplete) {
+  const stream = fs.createWriteStream(filename, { highWaterMark: 64 * 1024 });
+  stream.setMaxListeners(0);
+  stream.on('error', (err) => {
+    console.error(`Error writing to SQL file ${filename}: ${err.message}`);
+    throw err;
+  });
+  
+  const tableName = vocabulary.schema.events.table_name;
+  const columnsList = vocabulary.schema.events.columns
+    .filter(col => !col.name.startsWith("_"))
+    .map(col => col.name);
+  
+  let batch = [];
+  let eventCount = 0;
+  
+  return {
+    writeEvent: (event) => {
+      batch.push(event);
+      eventCount++;
+      
+      if (batch.length >= config.BATCH_SIZE_INSERT_SQL) {
+        const valueSets = batch.map(obj => {
+          const values = Object.entries(obj)
+            .filter(([key]) => !key.startsWith("_"))
+            .map(([key, value]) => {
+              if (typeof value === "string") {
+                value = value.replace("'", "''");
+                return `'${value}'`;
+              }
+              return value;
+            });
+          return `(${values.join(", ")})`;
+        });
+        
+        const sql = `INSERT INTO ${tableName} (${columnsList.join(", ")})\n VALUES ${valueSets.join(",\n ")};\n\n`;
+        batch = [];
+        return new Promise((resolve) => {
+          if (!stream.write(sql)) {
+            stream.once('drain', resolve);
+          } else {
+            resolve();
+          }
+        });
+      }
+      return Promise.resolve();
+    },
+    close: () => {
+      if (batch.length > 0) {
+        const valueSets = batch.map(obj => {
+          const values = Object.entries(obj)
+            .filter(([key]) => !key.startsWith("_"))
+            .map(([key, value]) => {
+              if (typeof value === "string") {
+                value = value.replace("'", "''");
+                return `'${value}'`;
+              }
+              return value;
+            });
+          return `(${values.join(", ")})`;
+        });
+        
+        const sql = `INSERT INTO ${tableName} (${columnsList.join(", ")})\n VALUES ${valueSets.join(",\n ")};\n\n`;
+        stream.write(sql);
+      }
+      
+      stream.end(() => {
+        onComplete(eventCount);
+      });
+    }
+  };
+}
+
+function streamCasesToSQL(filename, schema, onComplete) {
+  const stream = fs.createWriteStream(filename, { highWaterMark: 64 * 1024 });
+  stream.setMaxListeners(0);
+  stream.on('error', (err) => {
+    console.error(`Error writing to SQL file ${filename}: ${err.message}`);
+    throw err;
+  });
+  
+  const tableName = schema.table_name;
+  const columnsList = schema.columns.filter(col => !col.name.startsWith("_")).map(col => col.name);
+  
+  let batch = [];
+  let caseCount = 0;
+  
+  return {
+    writeCase: (caseObj) => {
+      batch.push(caseObj);
+      caseCount++;
+      
+      if (batch.length >= config.BATCH_SIZE_INSERT_SQL) {
+        const valueSets = batch.map(obj => {
+          const values = Object.entries(obj)
+            .filter(([key]) => !key.startsWith("_"))
+            .map(([key, value]) => typeof value === "string" ? `'${value.replace("'", "''")}'` : value);
+          return `(${values.join(', ')})`;
+        });
+        batch = [];
+        return new Promise((resolve) => {
+          if (!stream.write(`INSERT INTO ${tableName} (${columnsList.join(', ')}) VALUES\n${valueSets.join(',\n')};\n\n`)) {
+            stream.once('drain', resolve);
+          } else {
+            resolve();
+          }
+        });
+      }
+      return Promise.resolve();
+    },
+    close: () => {
+      if (batch.length > 0) {
+        const valueSets = batch.map(obj => {
+          const values = Object.entries(obj)
+            .filter(([key]) => !key.startsWith("_"))
+            .map(([key, value]) => typeof value === "string" ? `'${value.replace("'", "''")}'` : value);
+          return `(${values.join(', ')})`;
+        });
+        stream.write(`INSERT INTO ${tableName} (${columnsList.join(', ')}) VALUES\n${valueSets.join(',\n')};\n\n`);
+      }
+      stream.end(() => onComplete(caseCount));
+    }
+  };
+}
+
+function streamCasesToCSV(filename, schema, onComplete) {
+  const headers = schema.columns.filter(col => !col.name.startsWith("_")).map(col => col.display_name);
+  
+  const stream = fs.createWriteStream(filename, { highWaterMark: 64 * 1024 });
+  stream.setMaxListeners(0);
+  
+  stream.write(headers.join(",") + "\n");
+  
+  let caseCount = 0;
+  return {
+    writeCase: (caseObj) => {
+      const rowData = headers.map(h => caseObj[h] || "").join(",");
+      return new Promise((resolve) => {
+        if (!stream.write(rowData + "\n")) {
+          stream.once('drain', resolve);
+        } else {
+          resolve();
+        }
+      }).then(() => caseCount++);
+    },
+    close: () => {
+      stream.end(() => onComplete(caseCount));
+    }
+  };
+}
+
+module.exports = { saveToCSV, writeFile, deleteFile, streamEventsToCSV, streamEventsToSQL, streamCasesToSQL, streamCasesToCSV };
